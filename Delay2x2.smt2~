@@ -1,28 +1,26 @@
 
-; Electrical Representation of Wire Voltages
-(define-sort WireVoltage () (_ BitVec 2) )	;Needs to cover 3 possible values, hence 2 bits needed
-(define-const wire-Neg WireVoltage (_ bv3 2) ) ; 3 = -1  (!!)
+(define-sort WireVoltage () (_ BitVec 2) )
+(define-const wire-Neg WireVoltage (_ bv3 2) )
 (define-const wire-Gnd WireVoltage (_ bv0 2) )
 (define-const wire-Pos WireVoltage (_ bv1 2) )
 
 (define-fun RowVoltage ((t Bool)) WireVoltage
-	(ite t wire-Pos wire-Neg )	;"true" logical value on row means Vth, "false" means -Vth
+	(ite t wire-Pos wire-Neg )
 )
 
 
 (define-fun ColTruth ((v WireVoltage)) Bool
-	(ite (= v wire-Gnd) false true)	;"true" logical value on column means Vth or -Vth, "false" means Gnd
+	(ite (= v wire-Gnd) false true)
 )
 
-; The polarities, the objective is to find these
+; The polarities
 (declare-const M11P Bool) ; True means positive
 (declare-const M12P Bool)
 (declare-const M21P Bool)
 (declare-const M22P Bool)
 
-;The rules for the change in memristors' on/off state
 (define-fun MemristorValue((prior Bool)(polarity Bool)(Vr WireVoltage)(Vc WireVoltage)) Bool
-	(ite polarity	;Positive polarity
+	(ite polarity
 		(ite (bvsgt Vr Vc) true
 			(ite (= Vr Vc) prior false )
 		)
