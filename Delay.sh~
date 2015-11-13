@@ -1,0 +1,133 @@
+#!/bin/sh
+#SBATCH --job-name="Delay"
+#SBATCH --output="RESULTS/%j.Delay.%N.out"
+#SBATCH --partition=compute
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --export=ALL
+#SBATCH -t 47:59:59
+
+Rows=$1
+Cols=$2
+FormulaName="Delay"
+FILE="SMT/${FormulaName}_${Rows}x${Cols}.smt2"
+
+#Declaring the Polarities (To be found by the solver)
+PolarityDecs=""
+for i in `seq 1 $Rows`;
+do
+	for j in `seq 1 $Cols`;
+	do
+		PolarityDecs="$PolarityDecs
+(declare-const M$i${j}P Bool)"
+	done
+done
+
+
+#Declaring the Subsets (To be found by the solver)
+SubsetDecs=""
+for i in `seq 1 $Rows`;
+do
+	for j in `seq 1 $Cols`;
+	do
+		SubsetDecs="$SubsetDecs
+(declare-const SubR${i}_C$j Bool)"
+	done
+done
+
+#Defining ColVal: A function that will return the value of a column at t+1 given the on/off states of the memristors on it
+ColValDef="(define-fun ColVal("
+for i in `seq 1 $Rows`;
+do
+	ColValDef="$ColValDef(m${i}_ Bool)"
+done
+ColValDef="$ColValDef) Bool
+	(or "
+for i in `seq 1 $Rows`;
+do
+	ColValDef="$ColValDef m${i}_"
+done
+ColValDef="$ColValDef)
+)"
+
+
+MainRule="(assert (forall ("
+for i in `seq 1 $Rows`;
+do
+	MainRule="$MainRule(r$i Bool)"
+	for j in `seq 1 $Cols`;
+	do
+		MainRule="$MainRule"
+		#(m${i}_${j} Bool)"
+	done
+done
+
+MainRule="$MainRule)
+	(and"
+	
+#For each row, the previous value should equal the and of the corresponding column in the time frame after
+for i in `seq 1 $Rows`;
+do
+	MainRule="$MainRule
+		(= r$i
+			(and"
+	
+	for j in `seq 1 $Cols`;
+	do
+		MainRule="$MainRule
+				(or (not SubR${i}_C$j) (ColVal "
+			
+		for k in `seq 1 $Rows`;
+		do
+			MainRule="$MainRule(MemristorVal M${k}${j}P r$k)"
+		done	
+			
+		MainRule="$MainRule))"
+	done
+		
+	MainRule="$MainRule
+			)
+		)"
+done
+
+MainRule="$MainRule
+	)
+))"
+
+
+GetValue="(get-value ("
+for i in `seq 1 $Rows`;
+do
+	for j in `seq 1 $Cols`;
+	do
+		GetValue="$GetValue M${i}${j}P SubR${i}_C${j}"
+	done
+done
+GetValue="$GetValue))"
+
+
+/bin/cat <<EOM >$FILE
+
+;(define-sort ColSubset () (_ BitVec $Cols) ) ; #Defining the Subset type
+
+$PolarityDecs
+$SubsetDecs
+
+; #The value of a memristor in t+1
+(define-fun MemristorVal((polarity Bool)(Vr Bool)) Bool
+	(= polarity Vr) ; #Positive polarity memristors turn on when row in true (i.e. Vt)
+)
+
+$ColValDef
+
+$MainRule
+
+(check-sat)
+
+$GetValue
+
+EOM
+
+date
+./z3 $FILE
+date
